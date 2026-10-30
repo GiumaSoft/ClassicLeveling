@@ -1,13 +1,13 @@
-# ClassicLeveling 1.4.0
+# ClassicLeveling 1.6.2
 
 A combined XP, bag-value and kill meter with equipment upgrade highlights for
 **WoW Classic Era 1.15.9** (interface 11509).
 The interface and messages are in English.
 
-The compact panel is 332 x 195 pixels, widened by 48 pixels to fit per-mob XP/s.
+The compact panel is 332 x 195 pixels; opening the mob list widens it to 408 pixels.
 Recent XP and session averages share two rows, with 16-point recent values and
 14-point averages. Bag amounts use a 15-point font. All counters remain visible.
-The expandable kill history increases the height to 400 pixels when open.
+The expandable kill history is 408 x 400 pixels when open. The toggle stays in place.
 Your character's actual name and level appear directly below the title, for
 example **Osobo lv. 5**. The level updates automatically when leveling up.
 
@@ -23,10 +23,18 @@ They use the full 60-second / 60-minute windows from the start. For example,
 earning 100 XP after 10 seconds shows 100 XP/min and 100 XP/hr. The session
 averages at that point show 600 XP/min and 36,000 XP/hr.
 An award exactly 60 seconds old is excluded from XP/min; an award exactly
-3600 seconds old is excluded from XP/hr. Values are rounded to whole XP.
+3600 seconds old is excluded from XP/hr. Values are rounded to whole XP. Both displayed XP/min values refresh every 5 seconds;
+XP awards are recorded immediately and the recent window remains 60 seconds.
 
-**Session XP** and elapsed time remain visible below the rates. Idle time while
-online counts; offline time does not. All counters use the same online clock.
+**Session XP** remains visible below the rates. A separate row shows
+**Combat 0h 30m 15s | Total 2h 20m 10s**. Combat counts the time your character
+is in combat; Total counts all online time, including idle time. Offline time
+is excluded from both. XP rates continue to use total online time.
+
+Both timers are saved per character and reset with **Reset**. Resetting during
+combat starts a new combat segment immediately. Existing total time survives
+this update; the new Combat counter starts at zero because previous combat time
+cannot be reconstructed.
 
 Every actual increase to the player's XP bar counts, including kills, quests,
 exploration and rested bonuses. Pet XP is excluded. Level-ups preserve the
@@ -40,24 +48,18 @@ when entering the game and updates once per second.
 
 ## Bag value
 
-- **Bags (vendor)** sums each carried item's native vendor sell price
-  multiplied by its quantity, displayed in gold, silver and copper.
-- **Bag change** is the current bag value minus its value at the
-  last Reset. Positive values show more value being carried; selling, consuming,
-  equipping or moving items out of the bags lowers this counter.
-- The first complete scan establishes the initial baseline. Both the baseline
-  and the XP counters are saved per character.
+**Bags (sell value): 0g 2s 30c** is the single bag-value counter. It sums each
+carried item's native vendor sell price multiplied by its quantity. The previous
+Bag change row has been removed.
 
-Scope: backpack and the contents of the four equipped bags, including ammo
-bags. Bank contents and equipped gear are outside this total. The displayed
-valuation uses vendor prices; auction prices and wallet gold are separate.
-Unsellable items contribute zero.
+Scope: backpack and the contents of the four equipped bags, including ammo bags.
+Bank contents, equipped gear, auction prices and wallet gold are outside this
+total. Unsellable items contribute zero. Selling, consuming or moving items out
+of the bags lowers the displayed value.
 
 Prices are loaded from the client. While item data is pending, `>=` marks the
-known subtotal, the pending count is shown, and the bag change is `--`.
-The initial/reset baseline waits for a complete scan so a delayed price is
-never mistaken for newly gained value. Sorting and splitting stacks preserve
-the total. Changes update within about one second.
+known subtotal and the pending count is shown. Sorting and splitting stacks
+preserve the total. Changes update within about one second.
 
 ## Equipment upgrades in bags
 
@@ -109,6 +111,8 @@ on the left to move the panel. The table shows:
 - **Time**: seconds from the first recorded hit or attempted hit to the mob's
   death, including attacks from the character, pet and group. A first miss starts
   the timer too. Preparatory spell casts and marks do not start it.
+- **Respawn avg**: observed average wait for another living mob with the same
+  name, regardless of level. Updated every 5 seconds; **--** until measured.
 - **XP/s**: XP received divided by that mob's kill time, displayed to one decimal
   place. It uses the full stored duration, before rounding the Time display.
   Pending XP, missing duration and zero-duration kills show **--**. Zero XP with
@@ -147,7 +151,7 @@ Mob levels are observed from the target, mouseover, nameplates and party targets
 An unavailable or skull level is shown as **?**; it is never estimated from the
 creature's name. The tooltip includes the full row and the online time of the kill.
 
-Version 1.4 adds a new equipment module. **Restart Classic Era** after installing
+Version 1.4 introduced the equipment module. **Restart Classic Era** after installing
 this update to load the complete file list. Existing XP counters, bag baseline,
 kill history and other settings are preserved; only the newest 100 kills remain.
 
@@ -168,11 +172,11 @@ commands remain available.
 - Drag the title to move the panel while unlocked.
 - **Lock / Unlock** prevents or allows dragging.
 - **Reset** clears recent windows, session averages and total XP, restarts the
-  timer, clears kills and Kills/min, and sets the bag baseline to the current
-  complete valuation.
+  Combat and Total timers, and clears kills and Kills/min. Bag sell value
+  continues to show the current carried items.
 - `/clvl` or `/classicleveling`: toggle visibility. Tracking continues while hidden.
 - `/clvl show` / `/clvl hide`: show or hide the panel.
-- `/clvl reset`: start a new count for XP, bag changes and kills.
+- `/clvl reset`: start a new count for XP, kills and both session timers.
 - `/clvl lock` / `/clvl unlock`: control dragging.
 - `/clvl center`: recover the panel at its default position.
 - `/clvl help`: list commands.
@@ -182,7 +186,7 @@ Era. No third-party libraries or minimap button are required.
 
 ## Validation
 
-The test suite executes the installed Lua files under Lua 5.1 with simulated
+193 automated checks execute the installed Lua files under Lua 5.1 with simulated
 Classic Era XP APIs and UI frames. It checks moving-window boundaries, startup,
 expiry without new XP, session averages, migration, level-ups and event order,
 resets, logout/reload persistence, offline time, and the actual UI callbacks.
@@ -199,4 +203,29 @@ Equipment checks cover useful stats versus item level, current requirements,
 paired/unique slots, two-handed and dual-wield layouts, relevant weapon DPS,
 role/talent changes, English flat bonuses, item-cache misses and native/BetterBags
 button reuse. The player line is checked across level-up event timing and Reset.
+Session checks cover combat segments, idle time, startup during combat, duplicate
+events, zone changes, logout, old profiles, Reset while fighting and persistence
+while the panel is hidden or the mob history is cleared.
 Live-client behavior and appearance still require an in-game check.
+
+
+## Observed respawn average
+
+**Respawn avg** is the mean time from a recorded kill to a newly observed living
+mob with the **same name**. Mob level and individual identity do not group the
+result: Boar at level 4 and Boar at level 8 contribute to the same average.
+Each newly observed mob completes one waiting kill, oldest first. Repeated
+sightings and mobs already observed alive before the kill add no samples.
+
+The column refreshes every **5 seconds**. It shows **--** until the first sample,
+then an estimate such as **135s** (seconds). Hover the row to
+see the sample count. The current average is shared by all rows with that name;
+**Time** remains the duration of that individual kill.
+
+Observations come from targets, mouseover, visible nameplates and party targets.
+This measures observed availability, so a mob outside observable units can be
+seen later than its actual spawn. No server respawn schedule is assumed.
+
+Averages are saved per character, for at most 100 names. Area changes and
+reload/login discard unfinished waits, preserving measured averages. **Clear**
+removes the mob list while averages continue; **Reset** also clears averages.

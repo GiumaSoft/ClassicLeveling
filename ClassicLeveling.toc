@@ -2,7 +2,7 @@
 ## Title: ClassicLeveling
 ## Notes: Track XP, bag value, kills and usable equipment upgrades.
 ## Author: Giuseppe
-## Version: 1.4.0
+## Version: 1.6.2
 ## SavedVariablesPerCharacter: ClassicLevelingDB
 ## OptionalDeps: BetterBags
 

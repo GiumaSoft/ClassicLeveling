@@ -34,14 +34,15 @@ when XP precedes its combat event, the earlier observed character level is kept.
 The latest 100 kills are saved per character. A separate last-60-second list
 counts all credited kills regardless of that display limit, on the online clock.
 The expanded UI reuses eight rows and supports mouse-wheel and button paging.
-Its columns are `Mob`, `Lvl`, `XP@lvl`, `Time` and `XP/s`: `75@7` combines XP and the
+Its columns are `Mob`, `Lvl`, `XP@lvl`, `Time`, `XP/s` and `Respawn avg`: `75@7` combines XP and the
 character's level. Saved kill records retain those fields separately, so
 existing history keeps the original data.
 Per-mob XP/s is derived at display time from `xp / killTime`, using the full
 stored precision and displaying one decimal. Missing XP/time or a zero duration
 produces `--`; zero XP with positive time produces `0.0`. No duplicate derived
-value is persisted. The panel is 332 pixels wide to accommodate the added column,
-with unchanged collapsed/expanded heights and row font sizes.
+value is persisted. The collapsed panel stays 332 pixels wide and expands to 408 pixels for the
+additional column, with unchanged heights and row font sizes. The toggle keeps
+its horizontal position while opening and closing the wider list.
 
 Kill time uses the first allied `SWING_DAMAGE`, `RANGE_DAMAGE`, `SPELL_DAMAGE`,
 `SPELL_PERIODIC_DAMAGE` or corresponding missed-attack timestamp for each NPC
@@ -141,3 +142,32 @@ Development files outside the addon folder:
 - `tmp/classicleveling/installation.json`: installed and archived file hashes.
 
 Tests simulate the client. They do not establish live-client verification.
+
+
+Session Combat uses PLAYER_REGEN_DISABLED / PLAYER_REGEN_ENABLED and initializes
+from the readable UnitAffectingCombat("player") state. It does not require combat
+log access. combatSeconds is saved alongside total seconds; both clocks exclude
+offline time, and active combat is restarted at Reset. Older profiles retain
+Total with Combat starting at zero. The displayed bag counter is now only
+Bags (sell value); the legacy bag-baseline field remains readable for profile
+compatibility but has no visible change counter.
+
+
+Respawn means use the exact readable NPC name as their only grouping key.
+Credited kill times enter a bounded FIFO; the first newly observed living GUID
+with that name consumes one wait, including mobs at other levels. Public dead to
+alive transitions also qualify. Known living GUIDs suppress repeated observations;
+up to 1000 identities are retained per area. A five-second public-sighting cache
+handles XP-backed kills whose rows settle after their first reappearance.
+Samples publish every five seconds into saved total/count records, capped at
+100 names. Travel/login clears unfinished waits and observed identities. Clear
+preserves learned means; Reset clears means as well. Protected identities are
+never inspected or reconstructed. The observations estimate availability, not a
+server-provided spawn time.
+
+Both displayed XP/min columns have a separate five-second refresh cadence.
+Actual XP awards and 60-second-window calculations stay immediate; Reset forces
+the visible counters to zero immediately. Delayed frames retain the cadence's
+phase. Shared client behavior passes 15 differential scenarios.
+
+Respawn averages are displayed in rounded whole seconds, e.g. 135s, in both the column and tooltip.

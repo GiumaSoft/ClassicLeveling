@@ -22,6 +22,7 @@ frame:SetScript("OnEvent", function(_, event, unit, ...)
     if not A.db then return end
     if event == "PLAYER_ENTERING_WORLD" then
         A.Start()
+        A.Mobs.ResetRespawnObservations()
         A.Bags.Scan()
         A.Upgrades.Invalidate()
         A.Upgrades.HookBags()
@@ -39,6 +40,12 @@ frame:SetScript("OnEvent", function(_, event, unit, ...)
             A.Mobs.Tick()
             A.UI.Update()
         end)
+    elseif event == "ZONE_CHANGED_NEW_AREA" then
+        A.Mobs.ResetRespawnObservations()
+        A.Mobs.Scan()
+    elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+        A.SetCombat(event == "PLAYER_REGEN_DISABLED")
+        A.UI.Update()
     elseif event == "PLAYER_XP_UPDATE" then
         if unit ~= "player" then return end
         A.Sample()
@@ -74,6 +81,8 @@ frame:SetScript("OnEvent", function(_, event, unit, ...)
 end)
 
 for _, event in ipairs({"ADDON_LOADED", "PLAYER_ENTERING_WORLD", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "PLAYER_LOGOUT",
+    "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
+    "ZONE_CHANGED_NEW_AREA",
     "BAG_UPDATE_DELAYED", "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT", "CHAT_MSG_COMBAT_XP_GAIN",
     "COMBAT_LOG_EVENT_UNFILTERED", "PLAYER_TARGET_CHANGED", "UPDATE_MOUSEOVER_UNIT", "UNIT_TARGET",
     "NAME_PLATE_UNIT_ADDED", "NAME_PLATE_UNIT_REMOVED", "PLAYER_EQUIPMENT_CHANGED",

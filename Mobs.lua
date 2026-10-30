@@ -2,6 +2,9 @@ local _, A = ...
 local M = {units = {}, plates = {}, deaths = {}, byGUID = {}, pending = {}, lines = {}, fights = {}, revision = 0}
 A.Mobs = M
 M.LIMIT = 100
+M.RESPAWN_INTERVAL = 5
+M.respawnPending, M.respawnSeen, M.respawnOrder, M.respawnBatch, M.respawnStats = {}, {}, {}, {}, {}
+M.respawnSightings = {}
 
 local function safe(value)
     return not (type(issecretvalue) == "function" and issecretvalue(value))
@@ -61,8 +64,114 @@ local function pattern(template)
     end
 end
 
+function M.ResetRespawnObservations()
+    -- Travel and reload must not become samples of waiting for a respawn.
+    M.respawnPending, M.respawnSeen, M.respawnOrder = {}, {}, {}
+    M.respawnSightings = {}
+    M.respawnUpdatedAt = GetTime()
+    M.respawnStartedAt = M.respawnUpdatedAt
+end
+
+local function rememberAppearance(guid, dead)
+    local previous = M.respawnSeen[guid]
+    if previous == nil then
+        M.respawnOrder[#M.respawnOrder + 1] = guid
+        if #M.respawnOrder > 1000 then M.respawnSeen[table.remove(M.respawnOrder, 1)] = nil end
+    end
+    M.respawnSeen[guid] = dead
+    return previous
+end
+
+local function sampleRespawn(name, seconds)
+    local batch = M.respawnBatch[name] or {total = 0, count = 0}
+    local total = batch.total + seconds
+    if number(total) then
+        batch.total, batch.count = total, batch.count + 1
+        M.respawnBatch[name] = batch
+    end
+end
+
+local function observeRespawn(guid, name, dead)
+    local previous = rememberAppearance(guid, dead)
+    if dead or previous == false then return end
+    local now = GetTime()
+    for i, kill in ipairs(M.respawnPending) do
+        if kill.name == name and now >= kill.when then
+            table.remove(M.respawnPending, i)
+            sampleRespawn(name, now - kill.when)
+            return
+        end
+    end
+    M.respawnSightings[#M.respawnSightings + 1] = {name = name, when = now}
+    if #M.respawnSightings > 1000 then table.remove(M.respawnSightings, 1) end
+end
+
+local function awaitRespawn(node)
+    -- Match kills and new living sightings FIFO by name, regardless of level.
+    if node.when < (M.respawnStartedAt or 0) then return end
+    if node.guid then rememberAppearance(node.guid, M.respawnSeen[node.guid] or false) end
+    -- XP-backed rows settle after a short correlation delay. Keep public
+    -- sightings that happened after the XP notice but before that row existed.
+    if GetTime() > node.when then
+        for i, sighting in ipairs(M.respawnSightings) do
+            if sighting.name == node.name and sighting.when > node.when then
+                table.remove(M.respawnSightings, i)
+                sampleRespawn(node.name, sighting.when - node.when)
+                return
+            end
+        end
+    end
+    M.respawnPending[#M.respawnPending + 1] = {name = node.name, when = node.when}
+    if #M.respawnPending > M.LIMIT then table.remove(M.respawnPending, 1) end
+end
+
+function M.UpdateRespawns(flush)
+    local now = GetTime()
+    if not flush and now - (M.respawnUpdatedAt or now) < M.RESPAWN_INTERVAL then return end
+    local elapsed = now - (M.respawnUpdatedAt or now)
+    M.respawnUpdatedAt = flush and now or (now - elapsed % M.RESPAWN_INTERVAL)
+    for name, batch in pairs(M.respawnBatch) do
+        local stat = M.respawnStats[name] or {name = name, total = 0, count = 0}
+        local total = stat.total + batch.total
+        if number(total) then
+            stat.total, stat.count = total, stat.count + batch.count
+            for i, existing in ipairs(A.db.respawns) do
+                if existing == stat then table.remove(A.db.respawns, i); break end
+            end
+            table.insert(A.db.respawns, 1, stat)
+            M.respawnStats[name] = stat
+            if #A.db.respawns > M.LIMIT then
+                local removed = table.remove(A.db.respawns)
+                M.respawnStats[removed.name] = nil
+            end
+            M.revision = M.revision + 1
+        end
+    end
+    M.respawnBatch = {}
+end
+
+function M.RespawnAverage(name)
+    local stat = M.respawnStats[name]
+    if stat then return stat.total / stat.count, stat.count end
+    return nil, 0
+end
+
 function M.Init()
     local db, kills, times = A.db, {}, {}
+    local respawns = {}
+    M.respawnStats, M.respawnBatch = {}, {}
+    if type(db.respawns) == "table" then
+        for _, stat in ipairs(db.respawns) do
+            if type(stat) == "table" and text(stat.name) and number(stat.total) and
+                number(stat.count) and stat.count >= 1 and stat.count % 1 == 0 and not M.respawnStats[stat.name] then
+                local saved = {name = stat.name, total = stat.total, count = stat.count}
+                respawns[#respawns + 1], M.respawnStats[stat.name] = saved, saved
+                if #respawns == M.LIMIT then break end
+            end
+        end
+    end
+    db.respawns = respawns
+    M.ResetRespawnObservations()
     if type(db.kills) == "table" then
         for _, kill in ipairs(db.kills) do
             if type(kill) == "table" and text(kill.name) and level(kill.playerLevel) and
@@ -114,6 +223,9 @@ function M.Observe(unit)
     local dead = type(UnitIsDead) == "function" and UnitIsDead(unit)
     M.units[guid] = {name = name, mobLevel = level(UnitLevel(unit)) or (old and old.mobLevel),
         dead = safe(dead) and dead == true, seen = GetTime()}
+    if type(UnitIsDead) == "function" and safe(dead) and type(dead) == "boolean" then
+        observeRespawn(guid, name, dead)
+    end
 end
 
 function M.Scan()
@@ -133,6 +245,7 @@ local function record(node)
     table.insert(A.db.kills, index, kill)
     if #A.db.kills > M.LIMIT then table.remove(A.db.kills) end
     A.db.killTimes[#A.db.killTimes + 1] = node.onlineAt
+    awaitRespawn(node)
     M.revision = M.revision + 1
     return kill
 end
@@ -325,6 +438,10 @@ function M.Tick(flush)
     for guid, seen in pairs(M.units) do if now - seen.seen > 180 then M.units[guid] = nil end end
     for id, at in pairs(M.lines) do if now - at > 10 then M.lines[id] = nil end end
     for guid, fight in pairs(M.fights) do if now - fight.seen > 300 then M.fights[guid] = nil end end
+    for i = #M.respawnSightings, 1, -1 do
+        if now - M.respawnSightings[i].when > 5 then table.remove(M.respawnSightings, i) end
+    end
+    M.UpdateRespawns(flush)
     M.Rate()
 end
 
@@ -338,6 +455,8 @@ end
 
 function M.Reset()
     A.db.kills, A.db.killTimes = {}, {}
+    A.db.respawns, M.respawnStats, M.respawnBatch = {}, {}, {}
+    M.ResetRespawnObservations()
     M.deaths, M.byGUID, M.pending = {}, {}, {}
     M.fights = {}
     M.revision = M.revision + 1

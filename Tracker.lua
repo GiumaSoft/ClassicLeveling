@@ -1,6 +1,6 @@
 local _, A = ...
 _G.ClassicLeveling = A
-A.version = "1.4.0"
+A.version = "1.6.2"
 
 local function number(value)
     return type(value) == "number" and value == value and value >= 0 and value < math.huge
@@ -36,6 +36,7 @@ function A.Init()
     end
     db.xp = number(db.xp) and math.floor(db.xp) or 0
     db.seconds = number(db.seconds) and db.seconds or 0
+    db.combatSeconds = number(db.combatSeconds) and math.min(db.combatSeconds, db.seconds) or 0
     db.locked = db.locked == true
     db.hidden = db.hidden == true
     db.bagBaseline = number(db.bagBaseline) and math.floor(db.bagBaseline) or nil
@@ -64,6 +65,8 @@ function A.Start()
     A.last = progress()
     A.expectedLevel = nil
     A.startedAt = GetTime()
+    local combat = type(UnitAffectingCombat) == "function" and UnitAffectingCombat("player")
+    if not (type(issecretvalue) == "function" and issecretvalue(combat)) then A.SetCombat(combat == true) end
 end
 
 -- XP is read from the player's bar, so kills, quests, exploration and rested
@@ -104,6 +107,21 @@ function A.Elapsed()
     return A.db.seconds + (A.startedAt and math.max(0, GetTime() - A.startedAt) or 0)
 end
 
+function A.CombatElapsed()
+    local seconds = A.db.combatSeconds + (A.combatStartedAt and math.max(0, GetTime() - A.combatStartedAt) or 0)
+    return math.min(seconds, A.Elapsed())
+end
+
+function A.SetCombat(active)
+    if not A.startedAt then return end
+    if active then
+        if not A.combatStartedAt then A.combatStartedAt = GetTime() end
+    elseif A.combatStartedAt then
+        A.db.combatSeconds = A.CombatElapsed()
+        A.combatStartedAt = nil
+    end
+end
+
 function A.Stats()
     local seconds = A.Elapsed()
     local perMinute = seconds > 0 and A.db.xp * 60 / seconds or 0
@@ -130,21 +148,23 @@ function A.RollingXP()
 end
 
 function A.Reset()
-    A.db.xp, A.db.seconds = 0, 0
+    A.db.xp, A.db.seconds, A.db.combatSeconds = 0, 0, 0
     A.db.history = {}
     A.last, A.expectedLevel = progress(), nil
     if A.startedAt then A.startedAt = GetTime() end
+    if A.combatStartedAt then A.combatStartedAt = GetTime() end
     A.Bags.Reset()
     A.Mobs.Reset()
-    A.UI.Update()
+    A.UI.Update(true)
 end
 
 function A.Save()
     if not A.startedAt then return end
     A.Sample()
     A.RollingXP()
+    A.db.combatSeconds = A.CombatElapsed()
     A.db.seconds = A.Elapsed()
-    A.startedAt = nil
+    A.startedAt, A.combatStartedAt = nil, nil
 end
 
 function A.SetLocked(locked)
@@ -163,7 +183,7 @@ function A.Command(text)
     if command == "" then A.SetVisible(A.db.hidden)
     elseif command == "show" then A.SetVisible(true)
     elseif command == "hide" then A.SetVisible(false)
-    elseif command == "reset" then A.Reset(); A.Print("XP, bag baseline, kills and timer reset.")
+    elseif command == "reset" then A.Reset(); A.Print("XP, kills and session timers reset.")
     elseif command == "lock" then A.SetLocked(true)
     elseif command == "unlock" then A.SetLocked(false)
     elseif command == "center" then
@@ -171,7 +191,7 @@ function A.Command(text)
         A.SetVisible(true)
         A.UI.Place()
     else
-        A.Print("/clvl: show/hide. /clvl reset: reset XP, bags, kill history and timer.")
+        A.Print("/clvl: show/hide. /clvl reset: reset XP, kill history and session timers.")
         A.Print("/clvl lock | unlock | center. /cxp remains available.")
     end
 end
