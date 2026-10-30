@@ -1,0 +1,14 @@
+## Interface: 11509
+## Title: ClassicLeveling
+## Notes: Track XP, bag value, kills and usable equipment upgrades.
+## Author: Giuseppe
+## Version: 1.4.0
+## SavedVariablesPerCharacter: ClassicLevelingDB
+## OptionalDeps: BetterBags
+
+Tracker.lua
+Bags.lua
+Upgrades.lua
+Mobs.lua
+UI.lua
+Core.lua
